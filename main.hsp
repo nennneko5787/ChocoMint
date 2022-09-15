@@ -1,0 +1,219 @@
+#packopt icon "logo.ico"
+#packopt version "version.txt"
+#include "hsp3dish.as"
+#include "split.as"
+#include "mod_smart.as"
+smart_init
+#define BuildVer "0.5"
+
+#module
+#deffunc DrawChocoMintNav str tit
+	_devstr = getversion()
+    pos 0,0
+    color 255,255,255
+    boxf
+    color 
+    boxf 0,0,320,28
+    color 255,255,255
+    pos 5,5
+    font "",14
+    if tit="":mes "Chocomint "+_devstr+" Edition"
+    if tit!="":mes "Chocomint "+_devstr+" Edition - "+tit
+return
+
+#deffunc DrawButton label lb
+pos 290,0
+objsize 30,30
+button "三",lb
+return
+
+#defcfunc getversion
+    getreq _device,SYSREQ_PLATFORM
+    if _device=0:_devstr="Windows":title "Chocomint - "+_devstr+" Edition":onexit gosub *exit@ChocoMint
+    if _device=1:_devstr="iOS"
+    if _device=2:_devstr="Android"
+    if _device=3:_devstr="Web"
+    if _device=4:_devstr="Linux"
+    if _device=5:_devstr="Raspberry Pi"
+return _devstr
+#global
+
+screen 0,320,480
+title "Wait..."
+
+//タイトルメニュー
+*titlemenu@ChocoMint
+label=*titlemenu@ChocoMint
+redraw 0
+clrobj
+DrawButton *mainmenu@ChocoMint
+DrawChocoMintNav "タイトル"
+color
+font "",28,1
+mes "\nChocomintへようこそ！\n"
+font "",14
+mes "色々とやるには右上の「三」を押してください。"
+redraw 1
+repeat
+await
+if stat=-0x100 { gosub *exit@ChocoMint }	// 判定
+loop
+
+//メインメニュー
+*mainmenu@ChocoMint
+redraw 0
+clrobj
+DrawButton label
+DrawChocoMintNav "メニュー"
+pos 0,28
+objsize 320,35
+button "タイトルメニュー",*titlemenu@ChocoMint
+button "BBSMENU",*bbsmenu@ChocoMint
+button "設定",*setting@ChocoMint
+button "バージョン情報",*version@ChocoMint
+redraw 1
+repeat
+await
+if stat=-0x100 { goto label }	// 判定
+loop
+stop
+
+//バージョン情報
+*version@ChocoMint
+label=*version@ChocoMint
+redraw 0
+clrobj
+DrawButton *mainmenu@ChocoMint
+DrawChocoMintNav "バージョン"
+color
+font "",20,1
+mes "\nChocomintのバージョン情報"
+font "",14
+mes "BuildVersion:"+Buildver
+mes "SDKVersion:HSP3.7β3(Preview)"
+color 0,0,255
+font "",14,4
+mes "\n作者のサイト:https://www.nennneko5787.ml/"
+color
+font "",14
+mes "\n作者のトリップ:",1
+color 0,0,255
+font "",14,1
+mes "\n◆NOrufLSRl."
+redraw 1
+repeat
+smart_add 0
+if smart_one(0,0,101,476,115){
+    exec "http://www.nennneko5787.ml/",16
+}
+await
+if stat=-0x100 { goto *titlemenu@ChocoMint }	// 判定
+loop
+
+*setting@ChocoMint
+label=*setting@ChocoMint
+redraw 0
+clrobj
+DrawButton *mainmenu@ChocoMint
+DrawChocoMintNav "設定"
+color
+font "",40,1
+objsize 120, 20
+mes "\n設定\n"
+chkbox "ダークモード",darkmode
+redraw 1
+repeat
+redraw 0
+DrawChocoMintNav "設定"
+color
+font "",40,1
+mes "\n設定\n"
+redraw 1
+await
+if stat=-0x100 { goto *titlemenu@ChocoMint }	// 判定
+loop
+
+//BBSMENU
+*bbsmenu@ChocoMint
+label=*bbsmenu@ChocoMint
+redraw 0
+clrobj
+DrawButton *mainmenu@ChocoMint
+DrawChocoMintNav "BBSMENU"
+color
+//とりあえず三男BBSのを表示してみる
+mes "\nとりあえず次のバージョンでURL入力に対応します。"
+pos 0,48
+objsize 320,35
+button "防弾嫌儲(三男BBS)",*threadlist@ChocoMint
+redraw 1
+repeat
+await
+if stat=-0x100 { goto *mainmenu@ChocoMint }	// 判定
+loop
+
+//スレ一覧
+*threadlist@ChocoMint
+label=*threadlist@ChocoMint
+httpload "https://sannan.nl/news1/subject.txt"
+if stat : dialog "スレ一覧取得に失敗しました。。。",0,"ChocoMint" : goto *titlemenu@ChocoMint
+repeat
+;	結果待ちのためのループ
+httpinfo res,HTTPINFO_MODE		; 現在のモードを取得
+if res = HTTPMODE_READY : break	; 通信が終了した
+if res <= HTTPMODE_NONE : dialog "スレ一覧取得に失敗しました。。。",0,"ChocoMint" : goto *titlemenu@ChocoMint	; エラーが発生した
+await				; 時間待ちを行なう
+loop
+httpinfo buf,HTTPINFO_DATA		; 結果データを取得する
+httpinfo size,HTTPINFO_SIZE		; データサイズを取得する
+redraw 0
+clrobj
+DrawButton *mainmenu@ChocoMint
+DrawChocoMintNav "スレ一覧"
+color
+strrep buf,"\n","<>"
+strrep buf, strf("%c", 10), "<>"
+split buf,"<>",buf2
+pos 0,28
+objsize 320,35
+repeat 25
+if (page=0){
+if (cnt&1):button buf2(cnt),*Thread@ChocoMint
+}
+loop 
+button "次のベージへ",*titlemenu@ChocoMint
+redraw 1
+repeat
+await
+if stat=-0x100 { goto *bbsmenu@ChocoMint }	// 判定
+loop
+
+*Thread@ChocoMint
+label=*Thread@ChocoMint
+httpload "https://sannan.nl/news1/dat/1662948404.dat"
+if stat : dialog "スレ取得に失敗しました。。。",0,"ChocoMint" : goto *titlemenu@ChocoMint
+repeat
+;	結果待ちのためのループ
+httpinfo res,HTTPINFO_MODE		; 現在のモードを取得
+if res = HTTPMODE_READY : break	; 通信が終了した
+if res <= HTTPMODE_NONE : dialog "スレ取得に失敗しました。。。",0,"ChocoMint" : goto *titlemenu@ChocoMint	; エラーが発生した
+await				; 時間待ちを行なう
+loop
+httpinfo buf,HTTPINFO_DATA		; 結果データを取得する
+httpinfo size,HTTPINFO_SIZE		; データサイズを取得する
+redraw 0
+clrobj
+DrawButton *mainmenu@ChocoMint
+DrawChocoMintNav "スレ一覧"
+color
+mes "\n"+buf
+redraw 1
+repeat
+await
+if stat=-0x100 { goto *threadlist@ChocoMint }	// 判定
+loop
+
+*exit@ChocoMint
+dialog "アプリを終了しますか?",2,"ChocoMint"
+if stat!6 { return }	// Yes以外なら戻る
+end			// アプリ終了

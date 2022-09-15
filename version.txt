@@ -1,0 +1,11 @@
+_FILEVERSION=0.0.0.1
+_PRODUCTVERSION=0.0.0.1
+Comments=2‚¿‚á‚ñ‚Ë‚éŒİŠ·Œf¦”Â‘Î‰êƒuƒ‰‚ÍChocoMint!
+CompanyName=nennneko5787
+FileDescription=2‚¿‚á‚ñ‚Ë‚éŒİŠ·Œf¦”Â‘Î‰êƒuƒ‰‚ÍChocoMint!
+FileVersion=0.0.0.1
+InternalName=ChocoMint
+LegalCopyright=nennneko5787
+OriginalFilename=HSP3.7ƒÀ3(Preview)
+ProductName=ChocoMint
+ProductVersion=0.0.0.1
