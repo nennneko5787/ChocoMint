@@ -32,3 +32,11 @@ make
 hspcmp -d -i -u &lt;ソースコードのディレクトリ&gt;/main.hsp
 hsp3cl &lt;ソースコードのディレクトリ&gt;/main.ax
 </pre>
+# FAQ
+## MacとかiPhoneとかで使えないの??
+Mac -> Wine通して使ってね
+iPhone -> 使えないよ
+基本的にApple製品では使えません。
+## ソースコード見づらい
+(^^;
+## いつになったら完成するの?
