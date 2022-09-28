@@ -1,0 +1,89 @@
+#include "mod_menu.as"
+#include "hspinet.as"
+#include "mod_regexp.as"
+#uselib "user32.dll"
+#func GetWindowLong "GetWindowLongA" int,int 
+#func SetWindowLong "SetWindowLongA" int,int,int
+#packopt hide 1
+
+#func SetParent "SetParent" int,int
+
+screen 0,ginfo(20),ginfo(21),2,,,640,480
+GetWindowLong hwnd,-16
+SetWindowLong hwnd,-16,stat|$10000|$40000
+gsel 0,1
+hwnd0 = hwnd
+title "Initialize"
+
+netinit
+
+oncmd gosub *OnCommand, WM_COMMAND	//  メッセージ割り込み
+// サブメニュー作成
+newmenu hsubmenu, 1
+addmenu hsubmenu, "終了(&Q)", 1
+// トップメニュー作成
+newmenu hmenu, 0
+addmenu hmenu, "メニュー(&M)", hsubmenu, 0x10
+
+applymenu hmenu
+
+onexit gosub *exit
+title "Chocomint Windows Edition - Home"
+screen 1,ginfo(20),ginfo(21)-125,,0,0,120,ginfo(21)
+title "BBSMENU"
+hwnd1 = hwnd
+SetParent hwnd1,hwnd0	;SetParent 子にしたいウィンドウのハンドル,親にしたいウィンドウのハンドル
+objsize 120,ginfo(21)
+neturl "http://menu.5ch.net/"
+netload "bbsmenu.html"
+notesel bbsmenu
+noteload "bbsmenu.html"
+matches bbsbbs,bbsmenu,"<A HREF=(.*)>(.*)</A><br>"
+st=stat
+bbsmc=""
+repeat st
+bbsmc += bbsbbs(count,2)+"\n"
+count++
+loop
+listbox selbbs,ginfo_winy,bbsmc
+gsel 0
+screen 2,ginfo(20),ginfo(21),,0,0,640,480
+title "板"
+hwnd2 = hwnd
+SetParent hwnd2,hwnd0	;SetParent 子にしたいウィンドウのハンドル,親にしたいウィンドウのハンドル
+repeat
+oldselbbs = selbbs
+await
+if oldselbbs != selbbs{
+gsel 2
+cls
+title "Now Loading..."
+neturl bbsbbs(selbbs,1)
+netload "SETTING.TXT"
+notesel setting.txt
+noteload "SETTING.TXT"
+strrep setting.txt, strf("%c", 10), "\n"
+matches bbstitle,setting.txt,"BBS_TITLE=(.*)"
+title bbstitle(0,1)+" - Chocomint"
+neturl bbsbbs(selbbs,1)
+netload "subject.txt"
+notesel subject.txt
+noteload "subject.txt"
+matches subject,subject.txt,"(.*)<>(.*)"
+s = stat
+thread = ""
+repeat s
+thread += subject(cnt,2)+"\n"
+loop
+objsize ginfo_winx,ginfo_winy
+listbox selthread,ginfo_winy,thread
+}
+loop
+//メッセージの処理
+*OnCommand
+	cmd = wparam & 0xFFFF
+	if cmd == 1 : end
+	return
+*exit
+if wparam != 0:gsel wparam,-1:return
+end
