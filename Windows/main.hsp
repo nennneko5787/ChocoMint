@@ -1,12 +1,110 @@
+#module "scrlbar"
+//-----------------------
+#uselib "user32"
+#func global GetWindowLongA		"GetWindowLongA"	int, int
+#func global SetWindowLongA		"SetWindowLongA"	int, int, int
+#func global ShowScrollBar		"ShowScrollBar"		int, int, int
+#func global SetScrollInfo		"SetScrollInfo"		int, int, var, int
+#func global SetScrollPos		"SetScrollPos"		int, int, int, int
+#func global SetWindowPos		"SetWindowPos"		int, int, int, int, int, int, int
+
+#cfunc global GetParent			"GetParent"			int
+#cfunc global GetSystemMetrics	"GetSystemMetrics"	int
+#cfunc global WindowFromPoint	"WindowFromPoint"	int, int
+
+#func global ScreenToClient		"ScreenToClient"	int, var
+#func global GetWindowRect		"GetWindowRect"		int, var
+#cfunc global FindWindowEx		"FindWindowExA"		int, int, int, int
+#func global RedrawWindow		"RedrawWindow"		int, int, int, int
+//-----------------------
+
+#define ctype GetScrollBarSize(%1)GetSystemMetrics(2+%1)	// スクロールバーサイズの取得関数： 水平(0)/垂直(1)
+
+#deffunc groll2 int x, int y	// オブジェクトも移動するgroll命令
+	dim r, 4				;(モジュール内ScrollBar命令で使用しています)
+	v= ginfo_vx, ginfo_vy : groll x, y
+	repeat
+		hobj= FindWindowEx(hwnd, hobj, 0, 0)
+		if hobj= 0 : break
+		GetWindowRect hobj, r					; オブジェクトのスクリーン座標取得
+		ScreenToClient hwnd, r					; クライアント座標に変換
+		SetWindowPos hobj, 0, r+v-ginfo_vx, r.1+v.1-ginfo_vy, 0, 0, $115
+		;RedrawWindow hobj, 0, 0, $401
+	loop
+	return
+
+#deffunc ScrollBar			// 水平 垂直スクロールバーを使えるようにする
+ oncmd gosub *WMSIZE, 	5
+ oncmd gosub *SCROLL, 	$114
+ oncmd gosub *SCROLL, 	$115
+ oncmd gosub *WHEEL, 	$20A
+ oncmd gosub *WHEEL, 	$20E
+ 
+	si= 28, 31, 0,0,0,0,0			// SCROLLINFO構造体
+
+	hscsize= GetScrollBarSize(0)	// スクロールバーのサイズを取得
+	vscsize= GetScrollBarSize(1)
+
+	dup xx,wx.ginfo_sel : dup yy,wy.ginfo_sel
+	if (wx.ginfo_sel=ginfo_sizex)|(wx.ginfo_sel=0) : hscsize=0
+	if (wy.ginfo_sel=ginfo_sizey)|(wy.ginfo_sel=0) : vscsize=0
+	wx.ginfo_sel= ginfo_sizex+ginfo_sx-ginfo_winx-vscsize
+	wy.ginfo_sel= ginfo_sizey+ginfo_sy-ginfo_winy-hscsize
+
+	ShowScrollBar hwnd, 0, 0 : ShowScrollBar hwnd, 1, 0
+	GetWindowLongA hwnd,-16 : SetWindowLongA hwnd,-16,stat|$340000		;( WS_VSCROLL|WS_HSCROLL|WS_SIZEBOX
+	SetWindowPos hWnd, 0, 0, 0, 0, 0, $37								;		screen 0(非推奨) , bgscr用	)
+	return
+
+*WMSIZE		//ウィンドウサイズが変更された時の処理
+	sel= ginfo_sel: gsel ginfo_intid
+	repeat 2
+		si.3= ginfo(26+cnt), ginfo(12+cnt), ginfo(8+cnt)
+		SetScrollInfo hwnd, cnt, si, 1
+	loop
+	groll2 ginfo_vx, ginfo_vy
+	mref bm, 67 : bm.20= ginfo_winx, ginfo_winy
+
+	Hide= (wx.ginfo_intid= ginfo_sizex) &(wy.ginfo_intid= ginfo_sizey)			; gsel selを確実に実行させるため
+
+	wnd= hwnd : gsel sel	; 何故かスクロールバーが描画されない環境があるため↓
+	if Hide: ShowScrollBar wnd, 0, 0 : ShowScrollBar wnd, 1, 0 : else : SetWindowPos wnd, 0, 0, 0, 0, 0, $37
+	return 1
+
+*WHEEL
+	sel= ginfo_sel : gsel ginfo_intid
+	m= iparam= $20A : flag= 0
+	nPos= ginfo(8+m)-(wparam>>18) : goto *@f		;18で30ドット移動 19で15
+
+*SCROLL		//スクロールバー操作時の処理
+	if flag=  0 {flag= 1 : m= iparam= $115 
+		sel= ginfo_sel : gsel ginfo_intid : nPos= ginfo(8+m) }
+	Code= wParam &$FFFF : if Code= 8 : flag= 0 : gsel sel : return
+	repeat 1
+		if Code= 5 : nPos= wParam>>16&$FFFF	: break		; SB_THUMBTRACK
+		if Code= 0 : nPos- 14 				: break		; SB_LINEUP
+		if Code= 1 : nPos+ 14				: break		; SB_LINEDOWN
+		if Code= 2 : nPos-ginfo(12+m)		: break		; SB_PAGEUP
+		if Code= 3 : nPos+ginfo(12+m)		: break		; SB_PAGEDOWN
+		if Code= 4 							: break		; SB_THUMBPOSITION
+		if Code= 6 : nPos= 0				: break		; SB_TOP
+		if Code= 7 : nPos= ginfo(26+m)		: break		; SB_BOTTOM
+	loop
+*@
+	SetScrollPos hwnd, m, nPos, 1
+	if m : groll2 ginfo_vx, nPos : :else: groll2 nPos, ginfo_vy 
+	if flag= 0 : gsel sel
+	return
+#global
+
 #include "mod_menu.as"
 #include "hspinet.as"
 #include "mod_regexp.as"
 #uselib "user32.dll"
+#func SetParent "SetParent" int, int
 #func GetWindowLong "GetWindowLongA" int,int 
 #func SetWindowLong "SetWindowLongA" int,int,int
 #packopt hide 1
-
-#func SetParent "SetParent" int,int
 
 screen 0,ginfo(20),ginfo(21),2,,,640,480
 GetWindowLong hwnd,-16
@@ -29,12 +127,24 @@ applymenu hmenu
 
 onexit gosub *exit
 title "Chocomint Windows Edition - Home"
+gosub *CreateBBSMENUScreen
+gosub *CreateBBSScreen
+gosub *CreateReadScreen
+repeat
+oldselbbs = selbbs
+oldselthread = selthread
+await
+gosub *LoopingBBSScreen
+gosub *LoopingReadScreen
+loop
+
+*CreateBBSMENUScreen
 screen 1,ginfo(20),ginfo(21)-125,,0,0,120,ginfo(21)
 title "BBSMENU"
 hwnd1 = hwnd
 SetParent hwnd1,hwnd0	;SetParent 子にしたいウィンドウのハンドル,親にしたいウィンドウのハンドル
 objsize 120,ginfo(21)
-neturl "http://menu.5ch.net/"
+neturl "http://www.3chan.jp/"
 netload "bbsmenu.html"
 notesel bbsmenu
 noteload "bbsmenu.html"
@@ -46,14 +156,23 @@ bbsmc += bbsbbs(count,2)+"\n"
 count++
 loop
 listbox selbbs,ginfo_winy,bbsmc
-gsel 0
-screen 2,ginfo(20),ginfo(21),,0,0,640,480
+return
+
+*CreateBBSScreen
+screen 2,ginfo(20),ginfo(21),,100,100,640,480
 title "板"
 hwnd2 = hwnd
 SetParent hwnd2,hwnd0	;SetParent 子にしたいウィンドウのハンドル,親にしたいウィンドウのハンドル
-repeat
-oldselbbs = selbbs
-await
+return
+
+*CreateReadScreen
+screen 3,ginfo(20),ginfo(21),,400,400,640,480
+title "スレッドを見るところ"
+hwnd3 = hwnd
+SetParent hwnd3,hwnd0	;SetParent 子にしたいウィンドウのハンドル,親にしたいウィンドウのハンドル
+return
+
+*LoopingBBSScreen
 if oldselbbs != selbbs{
 gsel 2
 cls
@@ -78,12 +197,56 @@ loop
 objsize ginfo_winx,ginfo_winy
 listbox selthread,ginfo_winy,thread
 }
+return
+
+*LoopingReadScreen
+if oldselthread != selthread{
+gsel 3
+cls
+title "Now Loading..."
+neturl bbsbbs(selbbs,1)+"dat/"
+netdlname "thread"
+netload subject(selthread,1)
+notesel thread
+noteload "thread"
+strrep thread, strf("%c", 10), "\n"
+strrep thread, "&gt;", "<"
+strrep thread, "&lt;", ">"
+strrep thread, "&quot;", "\""
+matches thtitle,thread,".*<>.*<>.*<>.*<>(.*)"
+screen 3,ginfo(20),(notemax+1)*14,,,,640,480
+title thtitle(0,1)+" - Chocomint"
+matches thdat,thread,"(.*)<>(.*)<>(.*)<>(.*)<>.*"
+repeat notemax
+strrep thdat(cnt,4),"<br>", "\n"
+mes str(cnt+1)+"："+replace(thdat(cnt,1),"<(\"[^\"]*\"|'[^']*'|[^'\">])*>","")+" ",1
+font "FixedSys",10
+if thdat(cnt,2) != ""{
+mes "mail:"+replace(thdat(cnt,2),"<(\"[^\"]*\"|'[^']*'|[^'\">])*>","")+" ",1
+}
+font "FixedSys",14
+mes replace(thdat(cnt,3),"<(\"[^\"]*\"|'[^']*'|[^'\">])*>","")
+pos 0
+mes replace(thdat(cnt,4),"<(\"[^\"]*\"|'[^']*'|[^'\">])*>","")+"\n"
 loop
+ScrollBar
+}
+return
+
 //メッセージの処理
 *OnCommand
 	cmd = wparam & 0xFFFF
 	if cmd == 1 : end
 	return
+	
 *exit
-if wparam != 0:gsel wparam,-1:return
+if wparam != 0:return
+exist "bbsmenu.html"
+if strsize != -1:delete "bbsmenu.html"
+exist "SETTING.TXT"
+if strsize != -1:delete "SETTING.TXT"
+exist "thread"
+if strsize != -1:delete "thread"
+exist "subject.txt"
+if strsize != -1:delete "subject.txt"
 end
