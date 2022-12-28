@@ -1,252 +1,195 @@
-#module "scrlbar"
-//-----------------------
-#uselib "user32"
-#func global GetWindowLongA		"GetWindowLongA"	int, int
-#func global SetWindowLongA		"SetWindowLongA"	int, int, int
-#func global ShowScrollBar		"ShowScrollBar"		int, int, int
-#func global SetScrollInfo		"SetScrollInfo"		int, int, var, int
-#func global SetScrollPos		"SetScrollPos"		int, int, int, int
-#func global SetWindowPos		"SetWindowPos"		int, int, int, int, int, int, int
-
-#cfunc global GetParent			"GetParent"			int
-#cfunc global GetSystemMetrics	"GetSystemMetrics"	int
-#cfunc global WindowFromPoint	"WindowFromPoint"	int, int
-
-#func global ScreenToClient		"ScreenToClient"	int, var
-#func global GetWindowRect		"GetWindowRect"		int, var
-#cfunc global FindWindowEx		"FindWindowExA"		int, int, int, int
-#func global RedrawWindow		"RedrawWindow"		int, int, int, int
-//-----------------------
-
-#define ctype GetScrollBarSize(%1)GetSystemMetrics(2+%1)	// スクロールバーサイズの取得関数： 水平(0)/垂直(1)
-
-#deffunc groll2 int x, int y	// オブジェクトも移動するgroll命令
-	dim r, 4				;(モジュール内ScrollBar命令で使用しています)
-	v= ginfo_vx, ginfo_vy : groll x, y
-	repeat
-		hobj= FindWindowEx(hwnd, hobj, 0, 0)
-		if hobj= 0 : break
-		GetWindowRect hobj, r					; オブジェクトのスクリーン座標取得
-		ScreenToClient hwnd, r					; クライアント座標に変換
-		SetWindowPos hobj, 0, r+v-ginfo_vx, r.1+v.1-ginfo_vy, 0, 0, $115
-		;RedrawWindow hobj, 0, 0, $401
-	loop
-	return
-
-#deffunc ScrollBar			// 水平 垂直スクロールバーを使えるようにする
- oncmd gosub *WMSIZE, 	5
- oncmd gosub *SCROLL, 	$114
- oncmd gosub *SCROLL, 	$115
- oncmd gosub *WHEEL, 	$20A
- oncmd gosub *WHEEL, 	$20E
- 
-	si= 28, 31, 0,0,0,0,0			// SCROLLINFO構造体
-
-	hscsize= GetScrollBarSize(0)	// スクロールバーのサイズを取得
-	vscsize= GetScrollBarSize(1)
-
-	dup xx,wx.ginfo_sel : dup yy,wy.ginfo_sel
-	if (wx.ginfo_sel=ginfo_sizex)|(wx.ginfo_sel=0) : hscsize=0
-	if (wy.ginfo_sel=ginfo_sizey)|(wy.ginfo_sel=0) : vscsize=0
-	wx.ginfo_sel= ginfo_sizex+ginfo_sx-ginfo_winx-vscsize
-	wy.ginfo_sel= ginfo_sizey+ginfo_sy-ginfo_winy-hscsize
-
-	ShowScrollBar hwnd, 0, 0 : ShowScrollBar hwnd, 1, 0
-	GetWindowLongA hwnd,-16 : SetWindowLongA hwnd,-16,stat|$340000		;( WS_VSCROLL|WS_HSCROLL|WS_SIZEBOX
-	SetWindowPos hWnd, 0, 0, 0, 0, 0, $37								;		screen 0(非推奨) , bgscr用	)
-	return
-
-*WMSIZE		//ウィンドウサイズが変更された時の処理
-	sel= ginfo_sel: gsel ginfo_intid
-	repeat 2
-		si.3= ginfo(26+cnt), ginfo(12+cnt), ginfo(8+cnt)
-		SetScrollInfo hwnd, cnt, si, 1
-	loop
-	groll2 ginfo_vx, ginfo_vy
-	mref bm, 67 : bm.20= ginfo_winx, ginfo_winy
-
-	Hide= (wx.ginfo_intid= ginfo_sizex) &(wy.ginfo_intid= ginfo_sizey)			; gsel selを確実に実行させるため
-
-	wnd= hwnd : gsel sel	; 何故かスクロールバーが描画されない環境があるため↓
-	if Hide: ShowScrollBar wnd, 0, 0 : ShowScrollBar wnd, 1, 0 : else : SetWindowPos wnd, 0, 0, 0, 0, 0, $37
-	return 1
-
-*WHEEL
-	sel= ginfo_sel : gsel ginfo_intid
-	m= iparam= $20A : flag= 0
-	nPos= ginfo(8+m)-(wparam>>18) : goto *@f		;18で30ドット移動 19で15
-
-*SCROLL		//スクロールバー操作時の処理
-	if flag=  0 {flag= 1 : m= iparam= $115 
-		sel= ginfo_sel : gsel ginfo_intid : nPos= ginfo(8+m) }
-	Code= wParam &$FFFF : if Code= 8 : flag= 0 : gsel sel : return
-	repeat 1
-		if Code= 5 : nPos= wParam>>16&$FFFF	: break		; SB_THUMBTRACK
-		if Code= 0 : nPos- 14 				: break		; SB_LINEUP
-		if Code= 1 : nPos+ 14				: break		; SB_LINEDOWN
-		if Code= 2 : nPos-ginfo(12+m)		: break		; SB_PAGEUP
-		if Code= 3 : nPos+ginfo(12+m)		: break		; SB_PAGEDOWN
-		if Code= 4 							: break		; SB_THUMBPOSITION
-		if Code= 6 : nPos= 0				: break		; SB_TOP
-		if Code= 7 : nPos= ginfo(26+m)		: break		; SB_BOTTOM
-	loop
-*@
-	SetScrollPos hwnd, m, nPos, 1
-	if m : groll2 ginfo_vx, nPos : :else: groll2 nPos, ginfo_vy 
-	if flag= 0 : gsel sel
-	return
-#global
-
-#include "mod_menu.as"
+#include "obj.as"
+#include "inputbox.as"
 #include "hspinet.as"
-#include "mod_regexp.as"
-#uselib "user32.dll"
-#func SetParent "SetParent" int, int
-#func GetWindowLong "GetWindowLongA" int,int 
-#func SetWindowLong "SetWindowLongA" int,int,int
+#include "user32.as"
+#include "mod_menu.as"
+#include "mod_WebView2_10115038.hsp"
+#define ChocoMintVersion "0.0.1"
+#define LBN_DBLCLK	2
+
+#define WM_SIZE				$00000005
+#define WS_CHILD			$40000000
+#define WS_VISIBLE			$10000000
+#define WS_OVERLAPPEDWINDOW		$00CF0000
+
 #packopt hide 1
 
 screen 0,ginfo(20),ginfo(21),2,,,640,480
 GetWindowLong hwnd,-16
 SetWindowLong hwnd,-16,stat|$10000|$40000
 gsel 0,1
-hwnd0 = hwnd
-title "Initialize"
-
+title "ChocoMint"
 netinit
-
-oncmd gosub *OnCommand, WM_COMMAND	//  メッセージ割り込み
+// WM_COMMAND_ を捕まえる
+oncmd gosub *lbl_WM_COMMAND, WM_COMMAND
 // サブメニュー作成
 newmenu hsubmenu, 1
+addmenu hsubmenu, "新規タブ(&N)", 2
+addmenu hsubmenu, "", 0,0x0800
+addmenu hsubmenu, "新規板登録(&A)", 3
+addmenu hsubmenu, "板メニューをテキストファイルとして開く(&M)", 4
+addmenu hsubmenu, "書き込みログ(&K)", 5
+addmenu hsubmenu, "", 0,0x0800
 addmenu hsubmenu, "終了(&Q)", 1
 // トップメニュー作成
 newmenu hmenu, 0
-addmenu hmenu, "メニュー(&M)", hsubmenu, 0x10
+addmenu hmenu, "ファイル(&F)", hsubmenu, 0x10
 
 applymenu hmenu
 
-onexit gosub *exit
-title "Chocomint Windows Edition - Home"
-gosub *CreateBBSMENUScreen
-gosub *CreateBBSScreen
-gosub *CreateReadScreen
-repeat
-oldselbbs = selbbs
-oldselthread = selthread
-await
-gosub *LoopingBBSScreen
-gosub *LoopingReadScreen
-loop
-
-*CreateBBSMENUScreen
-screen 1,ginfo(20),ginfo(21)-125,,0,0,120,ginfo(21)
-title "BBSMENU"
-hwnd1 = hwnd
-SetParent hwnd1,hwnd0	;SetParent 子にしたいウィンドウのハンドル,親にしたいウィンドウのハンドル
-objsize 120,ginfo(21)
-neturl "http://www.3chan.jp/"
-netload "bbsmenu.html"
-notesel bbsmenu
-noteload "bbsmenu.html"
-matches bbsbbs,bbsmenu,"<A HREF=(.*)>(.*)</A><br>"
-st=stat
-bbsmc=""
-repeat st
-bbsmc += bbsbbs(count,2)+"\n"
-count++
-loop
-listbox selbbs,ginfo_winy,bbsmc
-return
-
-*CreateBBSScreen
-screen 2,ginfo(20),ginfo(21),,100,100,640,480
-title "板"
-hwnd2 = hwnd
-SetParent hwnd2,hwnd0	;SetParent 子にしたいウィンドウのハンドル,親にしたいウィンドウのハンドル
-return
-
-*CreateReadScreen
-screen 3,ginfo(20),ginfo(21),,400,400,640,480
-title "スレッドを見るところ"
-hwnd3 = hwnd
-SetParent hwnd3,hwnd0	;SetParent 子にしたいウィンドウのハンドル,親にしたいウィンドウのハンドル
-return
-
-*LoopingBBSScreen
-if oldselbbs != selbbs{
-gsel 2
-cls
-title "Now Loading..."
-neturl bbsbbs(selbbs,1)
-netload "SETTING.TXT"
-notesel setting.txt
-noteload "SETTING.TXT"
-strrep setting.txt, strf("%c", 10), "\n"
-matches bbstitle,setting.txt,"BBS_TITLE=(.*)"
-title bbstitle(0,1)+" - Chocomint"
-neturl bbsbbs(selbbs,1)
-netload "subject.txt"
-notesel subject.txt
-noteload "subject.txt"
-matches subject,subject.txt,"(.*)<>(.*)"
-s = stat
-thread = ""
-repeat s
-thread += subject(cnt,2)+"\n"
-loop
-objsize ginfo_winx,ginfo_winy
-listbox selthread,ginfo_winy,thread
-}
-return
-
-*LoopingReadScreen
-if oldselthread != selthread{
-gsel 3
-cls
-title "Now Loading..."
-neturl bbsbbs(selbbs,1)+"dat/"
-netdlname "thread"
-netload subject(selthread,1)
-notesel thread
-noteload "thread"
-strrep thread, strf("%c", 10), "\n"
-strrep thread, "&gt;", "<"
-strrep thread, "&lt;", ">"
-strrep thread, "&quot;", "\""
-matches thtitle,thread,".*<>.*<>.*<>.*<>(.*)"
-screen 3,ginfo(20),(notemax+1)*14,,,,640,480
-title thtitle(0,1)+" - Chocomint"
-matches thdat,thread,"(.*)<>(.*)<>(.*)<>(.*)<>.*"
+// リスト
+temp=""
+lists=""
+exist "bbs.txt"
+if strsize=-1:notesel temp:notesave "bbs.txt"
+notesel bbs
+noteload "bbs.txt"
 repeat notemax
-strrep thdat(cnt,4),"<br>", "\n"
-mes str(cnt+1)+"："+replace(thdat(cnt,1),"<(\"[^\"]*\"|'[^']*'|[^'\">])*>","")+" ",1
-font "FixedSys",10
-if thdat(cnt,2) != ""{
-mes "mail:"+replace(thdat(cnt,2),"<(\"[^\"]*\"|'[^']*'|[^'\">])*>","")+" ",1
-}
-font "FixedSys",14
-mes replace(thdat(cnt,3),"<(\"[^\"]*\"|'[^']*'|[^'\">])*>","")
-pos 0
-mes replace(thdat(cnt,4),"<(\"[^\"]*\"|'[^']*'|[^'\">])*>","")+"\n"
+noteget temp,cnt
+split temp,",",temp2
+lists+=temp2(0)+"("+temp2(1)+")\n"
 loop
-ScrollBar
+// コントロール作成
+objsize 120
+pos 0,0
+listbox select, ginfo_winy, lists
+bbsmenus=stat
+hListbox = objinfo(bbsmenus, 2)
+sendmsg hListbox,$197,notemax ;LB_SETTOPINDEX
+
+subject=""
+objsize ginfo_winx-120,150
+pos 120,0
+listbox select2, 150, subject
+subjects=stat
+hListbox2 = objinfo(subjects, 2)
+
+;ステータスバー作成
+winobj "msctls_statusbar32",  "お使いのChocoMintは最新です", , WS_CHILD | WS_VISIBLE
+hStatus = objinfo(stat, 2)
+	
+oncmd gosub *resize,0x5	//WM_SIZE。ウィンドウサイズ変更時にここにジャンプする。
+
+pEnv = WebView2_CreateEnv()
+pCtrl = WebView2_CreateCtrl(pEnv, hwnd)
+WebView2_Size pCtrl, 120, 150, ginfo_winx, 450
+pView = WebView2_GetView(pCtrl)
+stop
+
+*lbl_WM_COMMAND
+if (lparam == hListbox){
+	hiword = (wparam >>16 )& 0xFFFF
+	if (hiword == LBN_DBLCLK){
+		netagent "Monazilla/1.0 ChocoMint/0.1"
+		notesel bbs
+		noteget temp,select
+		split temp,",",temp2
+		neturl temp2(1)
+		netload "subject.txt"
+		notesel subjecttxt
+		noteload "subject.txt"
+		strrep subjecttxt, strf("%c", 10), "\n" //LFをCR+LFに
+		subject=""
+		repeat notemax
+		noteget temps,cnt
+		split temps,"<>",temps2
+		subject+=temps2(1)+"\n"
+		loop
+		objprm subjects,subject
+		sendmsg hListbox2,$197,notemax ;LB_SETTOPINDEX
+	}
+}
+
+if (lparam == hListbox2){
+	hiword = (wparam >>16 )& 0xFFFF
+	if (hiword == LBN_DBLCLK){
+		netagent "Monazilla/1.0 ChocoMint/0.1"
+		notesel subjecttxt
+		strrep subjecttxt, strf("%c", 10), "\n" //LFをCR+LFに
+		noteget temps,select2
+		split temps,"<>",temps2
+		neturl temp2(1)+"dat/"
+		netload temps2(0)
+		notesel Thread
+		noteload temps2(0)
+		strrep Thread, strf("%c", 10), "\n" //LFをCR+LFに
+		noteget tempt,0
+		split tempt,"<>",tempt2
+		ThreadHTML={"<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=Shift-JIS">
+<meta http-equiv="Content-Style-Type" content="text/css">
+
+<title>"}+temps2(1)+{"</title>
+</head>
+<body vlink="#AA0088" text="#000000" link="#0000FF" bgcolor="#EFEFEF" alink="#FF0000">
+<hr style="background-color:#888;color:#888;border-width:0;height:1px;position:relative;top:-.4em;">
+<h1 style="color:#FF0000;font-size:larger;font-weight:normal;margin:-.5em 0 0;">"}+tempt2(4)+{"</h1>
+<dl class="thread">"}
+		count=0
+		repeat notemax
+		count++
+		noteget tempt,cnt
+		split tempt,"<>",tempt2
+		if tempt2(1)=="":mailto="<font color=\"green\"><b>"+tempt2(0)+"</b></font>":else:mailto="<a href=\"mailto:"+tempt2(1)+"\"><font color=\"green\"><b>"+tempt2(0)+"</b></font></a>"
+		ThreadHTML+="<dt>"+count+"："+mailto+" ： "+tempt2(2)+"</dt><dd> "+tempt2(3)+" <br><br></dd>\n"
+		loop
+		ThreadHTML+="<center><a href=\"\">[RELOAD]</a></center>"
+		notesel ThreadHTML
+		notesave "Thread.html"
+		WebView2_Navigate pView, dir_cur+"\\Thread.html"
+		delete temps2(0)
+	}
+}
+
+cmd = wparam & 0xFFFF
+if cmd == 1 : end
+if cmd == 3 {
+	InputBox "板の名称を入力してください","ChocoMint",""
+	bbsname=refstr
+	if bbsname="":return
+	InputBox "板のURLを入力してください","ChocoMint","http://"
+	bbsurl=refstr
+	if bbsurl="":return
+	notesel bbs
+	noteload "bbs.txt"
+	bbs=bbs+bbsname+","+bbsurl+"\n"
+	notesel bbs
+	notesave "bbs.txt"
+	exist "bbs.txt"
+	if strsize=-1:notesel temp:notesave "bbs.txt"
+	notesel bbs
+	noteload "bbs.txt"
+	repeat notemax
+	noteget temp,cnt
+	split temp,",",temp2
+	lists+=temp2(0)
+	loop
+	objprm bbsmenus,lists
+	dialog "登録しました"
 }
 return
 
-//メッセージの処理
-*OnCommand
-	cmd = wparam & 0xFFFF
-	if cmd == 1 : end
-	return
-	
-*exit
-if wparam != 0:return
-exist "bbsmenu.html"
-if strsize != -1:delete "bbsmenu.html"
-exist "SETTING.TXT"
-if strsize != -1:delete "SETTING.TXT"
-exist "thread"
-if strsize != -1:delete "thread"
-exist "subject.txt"
-if strsize != -1:delete "subject.txt"
-end
+*resize
+	if (wParam=0)|(wParam=2) {
+		r=ginfo_r
+		g=ginfo_g
+		b=ginfo_b
+		color 255,255,255
+		boxf
+		color r,g,b
+		s = 120,ginfo_winy,0,0
+		resizeobj bbsmenus,s,1
+		s = ginfo_winx-120,150,0,0
+		resizeobj subjects,s,1
+		WebView2_Size pCtrl, 120, 150, ginfo_winx, 450
+		sendmsg hStatus, WM_SIZE, 0, 0
+	}
+return 0
+
+*ONEXIT_
+	WebView2_Release pView
+	WebView2_Release pCtrl
+	WebView2_Release pEnv
+	delete "Thread.html"
+	end

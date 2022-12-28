@@ -1,89 +1,195 @@
-#include "mod_menu.as"
+#include "obj.as"
+#include "inputbox.as"
 #include "hspinet.as"
-#include "mod_regexp.as"
-#uselib "user32.dll"
-#func GetWindowLong "GetWindowLongA" int,int 
-#func SetWindowLong "SetWindowLongA" int,int,int
-#packopt hide 1
+#include "user32.as"
+#include "mod_menu.as"
+#include "mod_WebView2_10115038.hsp"
+#define ChocoMintVersion "0.0.1"
+#define LBN_DBLCLK	2
 
-#func SetParent "SetParent" int,int
+#define WM_SIZE				$00000005
+#define WS_CHILD			$40000000
+#define WS_VISIBLE			$10000000
+#define WS_OVERLAPPEDWINDOW		$00CF0000
+
+#packopt hide 1
 
 screen 0,ginfo(20),ginfo(21),2,,,640,480
 GetWindowLong hwnd,-16
 SetWindowLong hwnd,-16,stat|$10000|$40000
 gsel 0,1
-hwnd0 = hwnd
-title "Initialize"
-
+title "ChocoMint"
 netinit
-
-oncmd gosub *OnCommand, WM_COMMAND	//  メッセージ割り込み
+// WM_COMMAND_ を捕まえる
+oncmd gosub *lbl_WM_COMMAND, WM_COMMAND
 // サブメニュー作成
 newmenu hsubmenu, 1
+addmenu hsubmenu, "新規タブ(&N)", 2
+addmenu hsubmenu, "", 0,0x0800
+addmenu hsubmenu, "新規板登録(&A)", 3
+addmenu hsubmenu, "板メニューをテキストファイルとして開く(&M)", 4
+addmenu hsubmenu, "書き込みログ(&K)", 5
+addmenu hsubmenu, "", 0,0x0800
 addmenu hsubmenu, "終了(&Q)", 1
 // トップメニュー作成
 newmenu hmenu, 0
-addmenu hmenu, "メニュー(&M)", hsubmenu, 0x10
+addmenu hmenu, "ファイル(&F)", hsubmenu, 0x10
 
 applymenu hmenu
 
-onexit gosub *exit
-title "Chocomint Windows Edition - Home"
-screen 1,ginfo(20),ginfo(21)-125,,0,0,120,ginfo(21)
-title "BBSMENU"
-hwnd1 = hwnd
-SetParent hwnd1,hwnd0	;SetParent 子にしたいウィンドウのハンドル,親にしたいウィンドウのハンドル
-objsize 120,ginfo(21)
-neturl "http://menu.5ch.net/"
-netload "bbsmenu.html"
-notesel bbsmenu
-noteload "bbsmenu.html"
-matches bbsbbs,bbsmenu,"<A HREF=(.*)>(.*)</A><br>"
-st=stat
-bbsmc=""
-repeat st
-bbsmc += bbsbbs(count,2)+"\n"
-count++
+// リスト
+temp=""
+lists=""
+exist "bbs.txt"
+if strsize=-1:notesel temp:notesave "bbs.txt"
+notesel bbs
+noteload "bbs.txt"
+repeat notemax
+noteget temp,cnt
+split temp,",",temp2
+lists+=temp2(0)+"("+temp2(1)+")\n"
 loop
-listbox selbbs,ginfo_winy,bbsmc
-gsel 0
-screen 2,ginfo(20),ginfo(21),,0,0,640,480
-title "板"
-hwnd2 = hwnd
-SetParent hwnd2,hwnd0	;SetParent 子にしたいウィンドウのハンドル,親にしたいウィンドウのハンドル
-repeat
-oldselbbs = selbbs
-await
-if oldselbbs != selbbs{
-gsel 2
-cls
-title "Now Loading..."
-neturl bbsbbs(selbbs,1)
-netload "SETTING.TXT"
-notesel setting.txt
-noteload "SETTING.TXT"
-strrep setting.txt, strf("%c", 10), "\n"
-matches bbstitle,setting.txt,"BBS_TITLE=(.*)"
-title bbstitle(0,1)+" - Chocomint"
-neturl bbsbbs(selbbs,1)
-netload "subject.txt"
-notesel subject.txt
-noteload "subject.txt"
-matches subject,subject.txt,"(.*)<>(.*)"
-s = stat
-thread = ""
-repeat s
-thread += subject(cnt,2)+"\n"
-loop
-objsize ginfo_winx,ginfo_winy
-listbox selthread,ginfo_winy,thread
+// コントロール作成
+objsize 120
+pos 0,0
+listbox select, ginfo_winy, lists
+bbsmenus=stat
+hListbox = objinfo(bbsmenus, 2)
+sendmsg hListbox,$197,notemax ;LB_SETTOPINDEX
+
+subject=""
+objsize ginfo_winx-120,150
+pos 120,0
+listbox select2, 150, subject
+subjects=stat
+hListbox2 = objinfo(subjects, 2)
+
+;ステータスバー作成
+winobj "msctls_statusbar32",  "お使いのChocoMintは最新です", , WS_CHILD | WS_VISIBLE
+hStatus = objinfo(stat, 2)
+	
+oncmd gosub *resize,0x5	//WM_SIZE。ウィンドウサイズ変更時にここにジャンプする。
+
+pEnv = WebView2_CreateEnv()
+pCtrl = WebView2_CreateCtrl(pEnv, hwnd)
+WebView2_Size pCtrl, 120, 150, ginfo_winx, 450
+pView = WebView2_GetView(pCtrl)
+stop
+
+*lbl_WM_COMMAND
+if (lparam == hListbox){
+	hiword = (wparam >>16 )& 0xFFFF
+	if (hiword == LBN_DBLCLK){
+		netagent "Monazilla/1.0 ChocoMint/0.1"
+		notesel bbs
+		noteget temp,select
+		split temp,",",temp2
+		neturl temp2(1)
+		netload "subject.txt"
+		notesel subjecttxt
+		noteload "subject.txt"
+		strrep subjecttxt, strf("%c", 10), "\n" //LFをCR+LFに
+		subject=""
+		repeat notemax
+		noteget temps,cnt
+		split temps,"<>",temps2
+		subject+=temps2(1)+"\n"
+		loop
+		objprm subjects,subject
+		sendmsg hListbox2,$197,notemax ;LB_SETTOPINDEX
+	}
 }
-loop
-//メッセージの処理
-*OnCommand
-	cmd = wparam & 0xFFFF
-	if cmd == 1 : end
-	return
-*exit
-if wparam != 0:gsel wparam,-1:return
-end
+
+if (lparam == hListbox2){
+	hiword = (wparam >>16 )& 0xFFFF
+	if (hiword == LBN_DBLCLK){
+		netagent "Monazilla/1.0 ChocoMint/0.1"
+		notesel subjecttxt
+		strrep subjecttxt, strf("%c", 10), "\n" //LFをCR+LFに
+		noteget temps,select2
+		split temps,"<>",temps2
+		neturl temp2(1)+"dat/"
+		netload temps2(0)
+		notesel Thread
+		noteload temps2(0)
+		strrep Thread, strf("%c", 10), "\n" //LFをCR+LFに
+		noteget tempt,0
+		split tempt,"<>",tempt2
+		ThreadHTML={"<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=Shift-JIS">
+<meta http-equiv="Content-Style-Type" content="text/css">
+
+<title>"}+temps2(1)+{"</title>
+</head>
+<body vlink="#AA0088" text="#000000" link="#0000FF" bgcolor="#EFEFEF" alink="#FF0000">
+<hr style="background-color:#888;color:#888;border-width:0;height:1px;position:relative;top:-.4em;">
+<h1 style="color:#FF0000;font-size:larger;font-weight:normal;margin:-.5em 0 0;">"}+tempt2(4)+{"</h1>
+<dl class="thread">"}
+		count=0
+		repeat notemax
+		count++
+		noteget tempt,cnt
+		split tempt,"<>",tempt2
+		if tempt2(1)=="":mailto="<font color=\"green\"><b>"+tempt2(0)+"</b></font>":else:mailto="<a href=\"mailto:"+tempt2(1)+"\"><font color=\"green\"><b>"+tempt2(0)+"</b></font></a>"
+		ThreadHTML+="<dt>"+count+"："+mailto+" ： "+tempt2(2)+"</dt><dd> "+tempt2(3)+" <br><br></dd>\n"
+		loop
+		ThreadHTML+="<center><a href=\"\">[RELOAD]</a></center>"
+		notesel ThreadHTML
+		notesave "Thread.html"
+		WebView2_Navigate pView, dir_cur+"\\Thread.html"
+		delete temps2(0)
+	}
+}
+
+cmd = wparam & 0xFFFF
+if cmd == 1 : end
+if cmd == 3 {
+	InputBox "板の名称を入力してください","ChocoMint",""
+	bbsname=refstr
+	if bbsname="":return
+	InputBox "板のURLを入力してください","ChocoMint","http://"
+	bbsurl=refstr
+	if bbsurl="":return
+	notesel bbs
+	noteload "bbs.txt"
+	bbs=bbs+bbsname+","+bbsurl+"\n"
+	notesel bbs
+	notesave "bbs.txt"
+	exist "bbs.txt"
+	if strsize=-1:notesel temp:notesave "bbs.txt"
+	notesel bbs
+	noteload "bbs.txt"
+	repeat notemax
+	noteget temp,cnt
+	split temp,",",temp2
+	lists+=temp2(0)
+	loop
+	objprm bbsmenus,lists
+	dialog "登録しました"
+}
+return
+
+*resize
+	if (wParam=0)|(wParam=2) {
+		r=ginfo_r
+		g=ginfo_g
+		b=ginfo_b
+		color 255,255,255
+		boxf
+		color r,g,b
+		s = 120,ginfo_winy,0,0
+		resizeobj bbsmenus,s,1
+		s = ginfo_winx-120,150,0,0
+		resizeobj subjects,s,1
+		WebView2_Size pCtrl, 120, 150, ginfo_winx, 450
+		sendmsg hStatus, WM_SIZE, 0, 0
+	}
+return 0
+
+*ONEXIT_
+	WebView2_Release pView
+	WebView2_Release pCtrl
+	WebView2_Release pEnv
+	delete "Thread.html"
+	end
