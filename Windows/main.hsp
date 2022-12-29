@@ -6,6 +6,12 @@
 #include "mod_menu.as"
 #include "mod_WebView2_10115038.hsp"
 #include "mod_regexp.as"
+#include "timestamp.as"
+#include "hspini.as"
+#include "regedit.hsp"
+ini_setpath "./ChocoMint.ini"
+
+#packopt name "ChocoMint"
 #define ChocoMintVersion "0.6"
 #define LBN_DBLCLK	2
 
@@ -14,15 +20,60 @@
 #define WS_VISIBLE			$10000000
 #define WS_OVERLAPPEDWINDOW		$00CF0000
 
-#packopt hide 1
+#define	MFS_CHECKED		0x08
+#define	MFS_UNCHECKED	0x00
 
+#packopt hide 1
+netinit
+//WebView2のランタイムが入っているかを調べる
+//①物理(64Bit)
+poke null, 0, 0
+ap=""
+egdeinst=0
+NewRegEdit_init 1
+if stat=-1:dialog "WebView2 Install Error"
+ap = NewRegEdit_get("SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}","pv")
+if ap="" or ap="0.0.0.0"{
+	egdeinst+=1
+}
+//①ユーザー(64Bit)
+NewRegEdit_init 0
+if stat=-1:dialog "WebView2 Install Error"
+ap = NewRegEdit_get("Software\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}","pv")
+if ap="" or ap="0.0.0.0"{
+	egdeinst+=1
+}
+//①物理(32Bit)
+NewRegEdit_init 1
+if stat=-1:dialog "WebView2 Install Error"
+ap = NewRegEdit_get("SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}","pv")
+if ap="" or ap="0.0.0.0"{
+	egdeinst+=1
+}
+//①ユーザー(32Bit)
+NewRegEdit_init 0
+if stat=-1:dialog "WebView2 Install Error"
+ap = NewRegEdit_get("Software\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}","pv")
+if ap="" or ap="0.0.0.0"{
+	egdeinst+=1
+}
+
+if egdeinst>=4{
+dialog "WebView2がないとスレッドが見られません。(WebView2を使っているので)\nWebView2をインストールしますか?",2,"WebView2をインストールしますか?"
+if stat=6{
+	netagent "ChocoMint/"+ChocoMintVersion
+	neturl "https://apple.14chan.cf/"
+	netload "MicrosoftEdgeWebview2Setup.exe"
+	exec "MicrosoftEdgeWebview2Setup.exe /silent /install"
+}
+}
+//終わり
 screen 0,ginfo(20),ginfo(21),2,,,800,600
 GetWindowLong hwnd,-16
 SetWindowLong hwnd,-16,stat|$10000|$40000
 gsel 0,1
 title "ChocoMint"
 onexit gosub *ONEXIT_
-netinit
 // WM_COMMAND_ を捕まえる
 oncmd gosub *lbl_WM_COMMAND, WM_COMMAND
 // ファイルメニュー作成
@@ -30,6 +81,8 @@ newmenu hfilemenu, 1
 addmenu hfilemenu, "新規板登録(&A)", 2
 addmenu hfilemenu, "板メニューをテキストファイルとして開く(&M)", 3
 addmenu hfilemenu, "書き込みログ(&K)", 4
+addmenu hfilemenu, "", 0,0x0800
+addmenu hfilemenu, "オプション(&O)", 9
 addmenu hfilemenu, "", 0,0x0800
 addmenu hfilemenu, "終了(&Q)", 1
 // ＢＢＳメニュー作成
@@ -40,13 +93,32 @@ addmenu hbbsmenu, "ローカルルール・看板表示(&L)", 7
 // スレッドメニュー作成
 newmenu hthreadmenu, 1
 addmenu hthreadmenu, "更新チェック(&N)", 8
+// オプションメニュー作成
+newmenu hoptionmenu, 1
+addmenu hoptionmenu, "スレッド表示時のフォントをIE風にする(&N)", 9,0x0000
+ini_getiv option_ThreadView_FontIE,"ChocoMint Options","ThreadView_FontIE"
+if option_ThreadView_FontIE = 0{
+CheckMenuItem hoptionmenu, 9, MFS_UNCHECKED
+check1f = 0
+option_ThreadView_FontIE = 0
+}else{
+CheckMenuItem hoptionmenu, 9, MFS_CHECKED
+check1f = 1
+option_ThreadView_FontIE = 1
+}
+
 // トップメニュー作成
 newmenu hmenu, 0
 addmenu hmenu, "ファイル(&F)", hfilemenu, 0x10
 addmenu hmenu, "ＢＢＳ(&B)", hbbsmenu, 0x10
 addmenu hmenu, "スレッド(&T)", hthreadmenu, 0x10
+addmenu hmenu, "設定(&O)", hoptionmenu, 0x10
 
 applymenu hmenu
+
+syscolor 15
+boxf
+color
 
 // リスト
 temp=""
@@ -91,7 +163,7 @@ pos 575,0.5859375*ginfo_winy
 objsize 60,40
 button gosub "書き込み",*submit
 pos 120
-mesbox message,ginfo_winx-120,ginfo_winy-ginfo_cy-0.0390625*ginfo_winy,1
+mesbox message,ginfo_winx-120,ginfo_winy-ginfo_cy-0.0390625*ginfo_winy,1,0
 	
 oncmd gosub *resize,0x5	//WM_SIZE。ウィンドウサイズ変更時にここにジャンプする。
 
@@ -109,6 +181,8 @@ if res : break
 await
 loop
 netgetv versionCheck
+sel = ginfo_sel
+gsel 0
 if versionCheck != ChocoMintVersion{
 winobj "msctls_statusbar32",  "お使いのChocoMintは最新ではありません。アップデートをお願いします。https://github.com/nennneko5787/ChocoMint/releases/latest/", , WS_CHILD | WS_VISIBLE
 hStatus = objinfo(stat, 2)
@@ -117,6 +191,7 @@ hStatus = objinfo(stat, 2)
 winobj "msctls_statusbar32",  "お使いのChocoMintは最新です", , WS_CHILD | WS_VISIBLE
 hStatus = objinfo(stat, 2)
 }
+gsel sel
 stop
 
 *lbl_WM_COMMAND
@@ -165,13 +240,32 @@ if cmd == 2 {
 if cmd == 3:exec dir_cur+"\\bbs.txt",16
 if cmd == 4:exec dir_cur+"\\kakikomi.log",16
 if cmd == 5:gosub *subjectload
+if cmd == 6:gosub *createthread_
 if cmd == 8:gosub *threadload
+if cmd == 9{
+	// チェック１項目の処理
+	if check1f==1 {
+		// チェック済みならばチェックを外す
+		check1f = 0
+		CheckMenuItem hoptionmenu, 9, MFS_UNCHECKED
+		ini_put "ChocoMint Options","ThreadView_FontIE",0
+		option_ThreadView_FontIE = 0
+	}else{
+		// チェックされていなければ、チェックする
+		check1f = 1
+		CheckMenuItem hoptionmenu, 9, MFS_CHECKED
+		ini_put "ChocoMint Options","ThreadView_FontIE",1
+		option_ThreadView_FontIE = 1
+	}
+}
 return
 
 *resize
 	if (wParam=0)|(wParam=2) {
+		sel = ginfo_sel
+		gsel 0
 		cls
-		color 255,255,255
+		syscolor 15
 		boxf
 		color
 		// コントロール作成
@@ -204,9 +298,10 @@ return
 		objsize 60,40
 		button gosub "書き込み",*submit
 		pos 120,ginfo_cy+30
-		mesbox message,ginfo_winx-120,ginfo_winy-ginfo_cy-30,1
+		mesbox message,ginfo_winx-120,ginfo_winy-ginfo_cy-30,1,0
 			
 		WebView2_Size pCtrl, 120, 170, ginfo_winx,0.5859375*ginfo_winy
+		gsel sel
 	}
 return 0
 
@@ -222,8 +317,8 @@ bl=length(board)
 dat=temps2(0)
 strrep dat,".dat",""
 //board(bl-2),dat
-postdata="bbs="+board(bl-2)+"&key="+dat+"&FROM="+name+"&mail="+mail+"&MESSAGE="+message
-netagent "Monazilla/1.0 ChocoMint/0.1"
+postdata="bbs="+board(bl-2)+"&time="+now_ut+"&key="+dat+"&FROM="+name+"&mail="+mail+"&MESSAGE="+message
+netagent "Monazilla/1.0 ChocoMint/"+ChocoMintVersion
 neturl board(0)+"//"+board(2)+"/test/"
 netrequest_post "bbs.cgi",postdata
 ;	結果待ちのためのループ
@@ -243,6 +338,7 @@ notesel kakikomiogg
 notesave "kakikomi.log"
 }
 doweek="日","月","火","水","木","金","土"
+strrep postdata,"\n"," <br> "
 kakikomilog += "time="+gettime(0)+"/"+gettime(1)+"/"+gettime(3)+"("+doweek(gettime(2))+")"+gettime(4)+":"+gettime(5)+":"+gettime(6)+"."+gettime(7)+"&"+postdata
 notesave "kakikomi.log"
 gosub *threadload
@@ -252,7 +348,7 @@ return
 *subjectload
 selbbs=select
 oldms = timegettime()
-netagent "Monazilla/1.0 ChocoMint/0.1"
+netagent "Monazilla/1.0 ChocoMint/"+ChocoMintVersion
 notesel bbs
 noteget temp,select
 split temp,",",temp2
@@ -275,13 +371,15 @@ subject+=temps2(1)+"\n"
 loop
 objprm subjects,subject
 sendmsg hListbox2,$197,notemax ;LB_SETTOPINDEX
+sel = ginfo_sel
 sendmsg hStatus, $401, , "スレッド一覧をロードしました("+(timegettime()-oldms)+"ms)"
+gsel sel
 return
 
 *threadload
 oldms = timegettime()
 if urlrunv=0{
-netagent "Monazilla/1.0 ChocoMint/0.1"
+netagent "Monazilla/1.0 ChocoMint/"+ChocoMintVersion
 notesel subjecttxt
 noteget temps,select2
 split temps,"<>",temps2
@@ -310,22 +408,26 @@ ThreadHTML={"<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "htt
 <hr style="background-color:#888;color:#888;border-width:0;height:1px;position:relative;top:-.4em;">
 <h1 style="color:#FF0000;font-size:larger;font-weight:normal;margin:-.5em 0 0;">"}+tempt2(4)+{"</h1>
 <dl class="thread">"}
+if option_ThreadView_FontIE=1:ThreadHTML+="\n<pre>"
 count=0
 repeat notemax
 count++
 noteget tempt,cnt
 split tempt,"<>",tempt2
 if tempt2(1)=="":mailto="<font color=\"green\"><b>"+tempt2(0)+"</b></font>":else:mailto="<a href=\"mailto:"+tempt2(1)+"\"><font color=\"green\"><b>"+tempt2(0)+"</b></font></a>"
-message_rep = replace(tempt2(3),"(http|https)://(.*)(?<!(png|gif|bmp|webp|jpg|jpeg|psd|tif|tiff|tga))","<a href=\"$1://$2/\">$1://$2</a>")
-message_rep = replace(message_rep,"(http|https)://(.*).(png|gif|bmp|webp|jpg|jpeg|psd|tif|tiff|tga)","<a href=\"$1://$2.$3\" target=\"_blank\" title=\"$1://$2.$3\"><img src=\"$1://$2.$3\" alt=\"$1://$2.$3\" width=\"100\" height=\"100\"></img></a>")
+message_rep = replace(tempt2(3),"(http|https)://(.*).(png|gif|bmp|webp|jpg|jpeg|psd|tif|tiff|tga)","<a href=\"$1://$2.$3\" target=\"_blank\" title=\"$1://$2.$3\"><img src=\"$1://$2.$3\" alt=\"$1://$2.$3\" width=\"100\" height=\"100\"></img></a>")
 message_rep = replace(message_rep,"sssp://(.*).gif","<img src=\"https://$1.gif\" alt=\"https://$1.gif\" title=\"https://$1.gif\"></img>")
 ThreadHTML+="<dt>"+count+"："+mailto+" ： "+tempt2(2)+"</dt><dd> "+message_rep+" <br><br></dd>\n"
 loop
+if option_ThreadView_FontIE=1:ThreadHTML+="\n</pre>"
 ThreadHTML+="<hr>"
 notesel ThreadHTML
 notesave "Thread.html"
 WebView2_Navigate pView, dir_cur+"\\Thread.html"
+sel = ginfo_sel
+gsel 0
 sendmsg hStatus, $401, , "スレッドをロードしました("+(timegettime()-oldms)+"ms)"
+gsel sel
 return
 
 *urlrun
@@ -333,7 +435,7 @@ matches kekkau,url,"(http|https)://(.*)/test/read.cgi/(.*)/(.*)/"
 sureurl = kekkau(0,1)+"//"+kekkau(0,2)+"/"+kekkau(0,3)+"/dat/"
 temp2(1) = kekkau(0,1)+"//"+kekkau(0,2)+"/"+kekkau(0,3)+"/"
 temps2(0) = kekkau(0,4)+".dat"
-netagent "Monazilla/1.0 ChocoMint/0.1"
+netagent "Monazilla/1.0 ChocoMint/"+ChocoMintVersion
 neturl sureurl
 netrequest_get kekkau(0,4)+".dat"
 ;	結果待ちのためのループ
@@ -348,6 +450,65 @@ urlrunv=1
 gosub *threadload
 stop
 
+*createthread_
+screen 1,480,240
+title "新規スレッド作成"
+syscolor 15
+boxf
+color
+pos 10,10
+mes "タイトル：",1
+thread_title=""
+input thread_title,ginfo_winx-100,19
+pos 10,40
+mes "名前：",1
+thread_name=""
+input thread_name,130,19
+pos 200,40
+mes "E-mail（省略可）：",1
+thread_mail=""
+input thread_mail,130,19
+pos 10,70
+thread_message=""
+mesbox thread_message,ginfo_winx-20,ginfo_winy-ginfo_cx-90,1,0
+objsize 80,20
+pos 380,215
+button gosub "スレッド作成",*createthread__
+return
+
+*createthread__
+tm=temp2(1)
+split tm,"/",board
+bl=length(board)
+postdata="bbs="+board(bl-2)+"&time="+now_ut+"&subject="+thread_title+"&FROM="+thread_name+"&mail="+thread_mail+"&MESSAGE="+thread_message
+netagent "Monazilla/1.0 ChocoMint/"+ChocoMintVersion
+neturl board(0)+"//"+board(2)+"/test/"
+netrequest_post "bbs.cgi",postdata
+;	結果待ちのためのループ
+repeat
+netexec res
+if res : break
+await
+loop
+netgetv kakikomik
+dialog kakikomik,1,"書き込み確認(もう一度書き込みをクリック！)"
+exist "kakikomi.log"
+if strsize != -1{
+notesel kakikomilog
+noteload "kakikomi.log"
+}else{
+notesel kakikomiogg
+notesave "kakikomi.log"
+}
+doweek="日","月","火","水","木","金","土"
+strrep postdata,"\n"," <br> "
+kakikomilog += "time="+gettime(0)+"/"+gettime(1)+"/"+gettime(3)+"("+doweek(gettime(2))+")"+gettime(4)+":"+gettime(5)+":"+gettime(6)+"."+gettime(7)+"&"+postdata
+notesave "kakikomi.log"
+gsel 1,-1
+gosub *threadload
+gosub *subjectload
+return
+
 *ONEXIT_
 if wparam=0{
 	WebView2_Release pView
@@ -357,5 +518,6 @@ if wparam=0{
 	if strsize!=-1:delete "Thread.html"
 	end
 }else{
-return
+	gsel wparam,-1
 }
+return
