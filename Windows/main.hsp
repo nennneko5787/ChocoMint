@@ -5,6 +5,7 @@
 #include "winmm.as"
 #include "mod_menu.as"
 #include "mod_WebView2_10115038.hsp"
+#include "mod_regexp.as"
 #define ChocoMintVersion "0.0.1"
 #define LBN_DBLCLK	2
 
@@ -15,26 +16,35 @@
 
 #packopt hide 1
 
-screen 0,ginfo(20),ginfo(21),2,,,640,480
+screen 0,ginfo(20),ginfo(21),2,,,800,600
 GetWindowLong hwnd,-16
 SetWindowLong hwnd,-16,stat|$10000|$40000
 gsel 0,1
 title "ChocoMint"
+onexit gosub *ONEXIT_
 netinit
 // WM_COMMAND_ を捕まえる
 oncmd gosub *lbl_WM_COMMAND, WM_COMMAND
-// サブメニュー作成
-newmenu hsubmenu, 1
-addmenu hsubmenu, "新規タブ(&N)", 2
-addmenu hsubmenu, "", 0,0x0800
-addmenu hsubmenu, "新規板登録(&A)", 3
-addmenu hsubmenu, "板メニューをテキストファイルとして開く(&M)", 4
-addmenu hsubmenu, "書き込みログ(&K)", 5
-addmenu hsubmenu, "", 0,0x0800
-addmenu hsubmenu, "終了(&Q)", 1
+// ファイルメニュー作成
+newmenu hfilemenu, 1
+addmenu hfilemenu, "新規板登録(&A)", 2
+addmenu hfilemenu, "板メニューをテキストファイルとして開く(&M)", 3
+addmenu hfilemenu, "書き込みログ(&K)", 4
+addmenu hfilemenu, "", 0,0x0800
+addmenu hfilemenu, "終了(&Q)", 1
+// ＢＢＳメニュー作成
+newmenu hbbsmenu, 1
+addmenu hbbsmenu, "更新チェック(&N)", 5
+addmenu hbbsmenu, "新規スレッド作成(&N)", 6
+addmenu hbbsmenu, "ローカルルール・看板表示(&L)", 7
+// スレッドメニュー作成
+newmenu hthreadmenu, 1
+addmenu hthreadmenu, "更新チェック(&N)", 8
 // トップメニュー作成
 newmenu hmenu, 0
-addmenu hmenu, "ファイル(&F)", hsubmenu, 0x10
+addmenu hmenu, "ファイル(&F)", hfilemenu, 0x10
+addmenu hmenu, "ＢＢＳ(&B)", hbbsmenu, 0x10
+addmenu hmenu, "スレッド(&T)", hthreadmenu, 0x10
 
 applymenu hmenu
 
@@ -58,19 +68,19 @@ bbsmenus=stat
 hListbox = objinfo(bbsmenus, 2)
 sendmsg hListbox,$197,notemax ;LB_SETTOPINDEX
 
+url=""
+pos 120,0
+input url,ginfo_winx-(120+80),20
+pos ginfo_winx-80,0
+objsize 80,20
+button "→",*urlrun
+
 subject=""
 objsize ginfo_winx-120,0.1953125*ginfo_winy
-pos 120,0
+pos 120,20
 listbox select2, 0.1953125*ginfo_winy, subject
 subjects=stat
 hListbox2 = objinfo(subjects, 2)
-	
-oncmd gosub *resize,0x5	//WM_SIZE。ウィンドウサイズ変更時にここにジャンプする。
-
-pEnv = WebView2_CreateEnv()
-pCtrl = WebView2_CreateCtrl(pEnv, hwnd)
-WebView2_Size pCtrl, 120, 150, ginfo_winx, 0.5859375*ginfo_winy
-pView = WebView2_GetView(pCtrl)
 
 message="":name="":mail=""
 pos 120,0.5859375*ginfo_winy
@@ -82,6 +92,13 @@ objsize 60,40
 button gosub "書き込み",*submit
 pos 120
 mesbox message,ginfo_winx-120,ginfo_winy-ginfo_cy-0.0390625*ginfo_winy,1
+	
+oncmd gosub *resize,0x5	//WM_SIZE。ウィンドウサイズ変更時にここにジャンプする。
+
+pEnv = WebView2_CreateEnv()
+pCtrl = WebView2_CreateCtrl(pEnv, hwnd)
+WebView2_Size pCtrl, 120, 170, ginfo_winx, 0.5859375*ginfo_winy
+pView = WebView2_GetView(pCtrl)
 
 neturl "https://raw.githubusercontent.com/nennneko5787/ChocoMint/main/"
 netrequest_get "WindowsVersion.txt"
@@ -106,6 +123,7 @@ stop
 if (lparam == hListbox){
 	hiword = (wparam >>16 )& 0xFFFF
 	if (hiword == LBN_DBLCLK){
+		urlrunv=0
 		gosub *subjectload
 	}
 }
@@ -113,13 +131,14 @@ if (lparam == hListbox){
 if (lparam == hListbox2){
 	hiword = (wparam >>16 )& 0xFFFF
 	if (hiword == LBN_DBLCLK){
+		urlrunv=0
 		gosub *threadload
 	}
 }
 
 cmd = wparam & 0xFFFF
 if cmd == 1 : end
-if cmd == 3 {
+if cmd == 2 {
 	InputBox "板の名称を入力してください","ChocoMint",""
 	bbsname=refstr
 	if bbsname="":return
@@ -143,6 +162,10 @@ if cmd == 3 {
 	objprm bbsmenus,lists
 	dialog "登録しました"
 }
+if cmd == 3:exec dir_cur+"\\bbs.txt",16
+if cmd == 4:exec dir_cur+"\\kakikomi.log",16
+if cmd == 5:gosub *subjectload
+if cmd == 8:gosub *threadload
 return
 
 *resize
@@ -158,14 +181,20 @@ return
 		bbsmenus=stat
 		hListbox = objinfo(bbsmenus, 2)
 		sendmsg hListbox,$197,notemax ;LB_SETTOPINDEX
+
+		url=""
+		pos 120,0
+		input url,ginfo_winx-(120+80),20
+		pos ginfo_winx-80,0
+		objsize 80,20
+		button "→",*urlrun
 		
 		objsize ginfo_winx-120,0.1953125*ginfo_winy
-		pos 120,0
+		pos 120,20
 		listbox select2, 0.1953125*ginfo_winy, subject
 		subjects=stat
 		hListbox2 = objinfo(subjects, 2)
-			
-		WebView2_Size pCtrl, 120, 150, ginfo_winx,0.5859375*ginfo_winy
+
 		sendmsg hStatus, WM_SIZE, 0, 0
 		pos 120,0.5859375*ginfo_winy+0.06510416666*ginfo_winy
 		mes "名前：",1:input name,130,19
@@ -176,13 +205,17 @@ return
 		button gosub "書き込み",*submit
 		pos 120,ginfo_cy+30
 		mesbox message,ginfo_winx-120,ginfo_winy-ginfo_cy-30,1
+			
+		WebView2_Size pCtrl, 120, 170, ginfo_winx,0.5859375*ginfo_winy
 	}
 return 0
 
 *submit
+if urlrunv=0{
 notesel bbs
 noteget temp,select
 split temp,",",temp2
+}
 tm=temp2(1)
 split tm,"/",board
 bl=length(board)
@@ -201,6 +234,17 @@ await
 loop
 netgetv kakikomik
 dialog kakikomik,1,"書き込み確認(もう一度書き込みをクリック！)"
+exist "kakikomi.log"
+if strsize != -1{
+notesel kakikomilog
+noteload "kakikomi.log"
+}else{
+notesel kakikomiogg
+notesave "kakikomi.log"
+}
+doweek="日","月","火","水","木","金","土"
+kakikomilog += "time="+gettime(0)+"/"+gettime(1)+"/"+gettime(3)+"("+doweek(gettime(2))+")"+gettime(4)+":"+gettime(5)+":"+gettime(6)+"."+gettime(7)+"&"+postdata
+notesave "kakikomi.log"
 gosub *threadload
 gosub *subjectload
 return
@@ -236,6 +280,7 @@ return
 
 *threadload
 oldms = timegettime()
+if urlrunv=0{
 netagent "Monazilla/1.0 ChocoMint/0.1"
 notesel subjecttxt
 noteget temps,select2
@@ -249,6 +294,7 @@ if res : break
 await
 loop
 netgetv Thread
+}
 notesel Thread
 strrep Thread, strf("%c", 10), "\n" //LFをCR+LFに
 noteget tempt,0
@@ -258,7 +304,7 @@ ThreadHTML={"<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "htt
 <meta http-equiv="Content-Type" content="text/html;charset=Shift-JIS">
 <meta http-equiv="Content-Style-Type" content="text/css">
 
-<title>"}+temps2(1)+{"</title>
+<title>"}+tempt2(1)+{"</title>
 </head>
 <body vlink="#AA0088" text="#000000" link="#0000FF" bgcolor="#EFEFEF" alink="#FF0000">
 <hr style="background-color:#888;color:#888;border-width:0;height:1px;position:relative;top:-.4em;">
@@ -270,7 +316,10 @@ count++
 noteget tempt,cnt
 split tempt,"<>",tempt2
 if tempt2(1)=="":mailto="<font color=\"green\"><b>"+tempt2(0)+"</b></font>":else:mailto="<a href=\"mailto:"+tempt2(1)+"\"><font color=\"green\"><b>"+tempt2(0)+"</b></font></a>"
-ThreadHTML+="<dt>"+count+"："+mailto+" ： "+tempt2(2)+"</dt><dd> "+tempt2(3)+" <br><br></dd>\n"
+message_rep = replace(tempt2(3),"(http|https)://(.*)(?<!(png|gif|bmp|webp|jpg|jpeg|psd|tif|tiff|tga))","<a href=\"$1://$2/\">$1://$2</a>")
+message_rep = replace(message_rep,"(http|https)://(.*).(png|gif|bmp|webp|jpg|jpeg|psd|tif|tiff|tga)","<a href=\"$1://$2.$3\" target=\"_blank\" title=\"$1://$2.$3\"><img src=\"$1://$2.$3\" alt=\"$1://$2.$3\" width=\"100\" height=\"100\"></img></a>")
+message_rep = replace(message_rep,"sssp://(.*).gif","<img src=\"https://$1.gif\" alt=\"https://$1.gif\" title=\"https://$1.gif\"></img>")
+ThreadHTML+="<dt>"+count+"："+mailto+" ： "+tempt2(2)+"</dt><dd> "+message_rep+" <br><br></dd>\n"
 loop
 ThreadHTML+="<hr>"
 notesel ThreadHTML
@@ -279,9 +328,34 @@ WebView2_Navigate pView, dir_cur+"\\Thread.html"
 sendmsg hStatus, $401, , "スレッドをロードしました("+(timegettime()-oldms)+"ms)"
 return
 
+*urlrun
+matches kekkau,url,"(http|https)://(.*)/test/read.cgi/(.*)/(.*)/"
+sureurl = kekkau(0,1)+"//"+kekkau(0,2)+"/"+kekkau(0,3)+"/dat/"
+temp2(1) = kekkau(0,1)+"//"+kekkau(0,2)+"/"+kekkau(0,3)+"/"
+temps2(0) = kekkau(0,4)+".dat"
+netagent "Monazilla/1.0 ChocoMint/0.1"
+neturl sureurl
+netrequest_get kekkau(0,4)+".dat"
+;	結果待ちのためのループ
+repeat
+netexec res
+if res : break
+await
+loop
+Thread=""
+netgetv Thread
+urlrunv=1
+gosub *threadload
+stop
+
 *ONEXIT_
+if wparam=0{
 	WebView2_Release pView
 	WebView2_Release pCtrl
 	WebView2_Release pEnv
-	delete "Thread.html"
+	exist "Thread.html"
+	if strsize!=-1:delete "Thread.html"
 	end
+}else{
+return
+}
