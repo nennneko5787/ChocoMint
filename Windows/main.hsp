@@ -6,7 +6,7 @@
 #include "mod_menu.as"
 #include "mod_WebView2_10115038.hsp"
 #include "mod_regexp.as"
-#define ChocoMintVersion "0.0.1"
+#define ChocoMintVersion "0.6"
 #define LBN_DBLCLK	2
 
 #define WM_SIZE				$00000005
